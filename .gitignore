@@ -1,2 +1,4 @@
 autovpn
 *.orig
+
+.idea/
