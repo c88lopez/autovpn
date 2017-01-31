@@ -1,10 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -19,31 +19,30 @@ func check(e error) {
 	}
 }
 
-const sourceURL = "http://www.vpngate.net/api/iphone/"
-
 func main() {
 	chosenCountry := "US"
 	if len(os.Args) > 1 && len(os.Args[1]) == 2 {
 		chosenCountry = os.Args[1]
 	}
+	URL := "http://www.vpngate.net/api/iphone/"
 
-	log.Println("[autovpn] Getting server list...")
-	response, err := http.Get(sourceURL)
+	fmt.Printf("[autovpn] getting server list\n")
+	response, err := http.Get(URL)
 	check(err)
+
 	defer response.Body.Close()
+	scanner := bufio.NewScanner(response.Body)
 
-	csvFile, err := ioutil.ReadAll(response.Body)
-	check(err)
+	fmt.Printf("[autovpn] parsing response\n")
+	fmt.Printf("[autovpn] looking for %s\n", chosenCountry)
 
-	log.Println("[autovpn] Parsing response...")
-	log.Printf("[autovpn] Looking for %s...\n", chosenCountry)
-
-	for i, line := range strings.Split(string(csvFile), "\n") {
-		if i <= 1 {
+	counter := 0
+	for scanner.Scan() {
+		if counter <= 1 {
+			counter++
 			continue
 		}
-
-		splits := strings.Split(line, ",")
+		splits := strings.Split(scanner.Text(), ",")
 		if len(splits) < 15 {
 			break
 		}
@@ -54,9 +53,10 @@ func main() {
 			continue
 		}
 
-		writeConfFile(conf)
-
-		log.Println("[autovpn] Running openvpn...")
+		fmt.Printf("[autovpn] writing config file\n")
+		err = ioutil.WriteFile("/tmp/openvpnconf", conf, 0664)
+		check(err)
+		fmt.Printf("[autovpn] running openvpn\n")
 
 		cmd := exec.Command("sudo", "openvpn", "/tmp/openvpnconf")
 		cmd.Stdout = os.Stdout
@@ -71,29 +71,11 @@ func main() {
 		cmd.Start()
 		cmd.Wait()
 
-		checkTryAnother()
-	}
-
-	log.Println("[autovpn] No more vpns to connect.")
-}
-
-func writeConfFile(c []byte) {
-	log.Println("[autovpn] Writing config file...")
-	f, err := os.Create("/tmp/openvpnconf")
-	check(err)
-	defer f.Close()
-
-	_, err = f.Write(c)
-	check(err)
-}
-
-func checkTryAnother() {
-	fmt.Print("[autovpn] Try another VPN? (y/n) ")
-
-	var input string
-	fmt.Scanln(&input)
-	if strings.ToLower(input) == "n" {
-		fmt.Println("[autovpn] Bye!")
-		os.Exit(0)
+		fmt.Printf("[autovpn] try another VPN? (y/n) ")
+		var input string
+		fmt.Scanln(&input)
+		if strings.ToLower(input) == "n" {
+			os.Exit(0)
+		}
 	}
 }
