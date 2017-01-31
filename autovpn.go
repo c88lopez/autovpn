@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 )
+
+const URL = "http://www.vpngate.net/api/iphone/"
 
 func check(e error) {
 	if e != nil {
@@ -24,17 +27,15 @@ func main() {
 	if len(os.Args) > 1 && len(os.Args[1]) == 2 {
 		chosenCountry = os.Args[1]
 	}
-	URL := "http://www.vpngate.net/api/iphone/"
 
-	fmt.Printf("[autovpn] getting server list\n")
+	log.Print("[autovpn] Getting server list...")
 	response, err := http.Get(URL)
 	check(err)
 
 	defer response.Body.Close()
 	scanner := bufio.NewScanner(response.Body)
 
-	fmt.Printf("[autovpn] parsing response\n")
-	fmt.Printf("[autovpn] looking for %s\n", chosenCountry)
+	log.Printf("[autovpn] Parsing response and looking for %s\n", chosenCountry)
 
 	counter := 0
 	for scanner.Scan() {
@@ -42,6 +43,7 @@ func main() {
 			counter++
 			continue
 		}
+
 		splits := strings.Split(scanner.Text(), ",")
 		if len(splits) < 15 {
 			break
@@ -53,11 +55,9 @@ func main() {
 			continue
 		}
 
-		fmt.Printf("[autovpn] writing config file\n")
-		err = ioutil.WriteFile("/tmp/openvpnconf", conf, 0664)
-		check(err)
-		fmt.Printf("[autovpn] running openvpn\n")
+		writeConfFile(conf)
 
+		log.Print("[autovpn] Running openvpn...")
 		cmd := exec.Command("sudo", "openvpn", "/tmp/openvpnconf")
 		cmd.Stdout = os.Stdout
 
@@ -71,11 +71,23 @@ func main() {
 		cmd.Start()
 		cmd.Wait()
 
-		fmt.Printf("[autovpn] try another VPN? (y/n) ")
-		var input string
-		fmt.Scanln(&input)
-		if strings.ToLower(input) == "n" {
-			os.Exit(0)
-		}
+		tryNext()
+	}
+}
+
+func writeConfFile(conf []byte) {
+	log.Print("[autovpn] Writing config file...")
+	err := ioutil.WriteFile("/tmp/openvpnconf", conf, 0664)
+	check(err)
+}
+
+func tryNext() {
+	fmt.Print("[autovpn] Try another VPN? (y/n) ")
+	var input string
+	fmt.Scanln(&input)
+
+	if strings.ToLower(input) == "n" {
+		fmt.Println("[autovpn] Bye!")
+		os.Exit(0)
 	}
 }
